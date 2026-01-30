@@ -101,20 +101,9 @@
             display: none;
             /* ✅ 不要斜，不做 3D */
             transform: none;
+            opacity: 1;
         }
         /* ✅ 文字先「從左下角」淡入 */
-        
-        #text-crawler-container.intro {
-            opacity: 0;
-            transform: translate(-36px, 90px);
-            /* ✅ 從更左下 */
-            transition: opacity 1.8s ease, transform 1.8s ease;
-        }
-        
-        #text-crawler-container.intro.show {
-            opacity: 1;
-            transform: translate(0, 0);
-        }
         
         #text-crawler-content {
             white-space: pre-wrap;
@@ -655,14 +644,13 @@
         // ==========================================
         // 3-A) 文字：從左下角淡入 → 再往上慢慢爬
         // ==========================================
+        // ==========================================
+        // 3-A) 文字：完全從螢幕下方滑動入場 (不透明)
+        // ==========================================
         async function loadStoryAndStartCrawler() {
             let storyText =
                 "正在載入星際紀錄...\n\n" +
                 "很久以前，在一個遙遠的網頁瀏覽器中...\n\n" +
-                "這是一顆由粒子構成的星星。\n" +
-                "它代表著數位宇宙的核心。\n\n" +
-                "透過你的雙手，\n" +
-                "你可以控制引力的流向。\n\n" +
                 "故事還在繼續...";
 
             try {
@@ -675,47 +663,39 @@
 
             content.innerText = storyText;
 
-            // ✅ 先顯示，但放到視窗下方（真正左下角外面）
+            // ✅ 顯示容器，確保透明度為 1
             container.style.display = 'block';
-            container.classList.add('intro');
+            container.style.opacity = '1';
 
-            // 用 px：從視窗底下開始，才會像左下角「冒出來」
-            let bottomPx = -Math.max(260, Math.floor(window.innerHeight * 0.35));
+            // ✅ 取得容器高度，讓它從完全看不見的底部開始
+            // 如果抓不到高度，預設一個足夠大的負值 (如 -800)
+            let containerHeight = container.offsetHeight || 800;
+            let bottomPx = -containerHeight;
+
             container.style.bottom = bottomPx + "px";
 
-            // 下一 frame 才加 show，觸發 transition
-            requestAnimationFrame(() => {
-                container.classList.add('show');
-            });
+            // ✅ 上升速度
+            const SPEED_PX = 0.6;
 
-            // ✅ 淡入時間（要跟 CSS transition 一致）
-            const INTRO_MS = 1800;
+            // ✅ 結束位置：爬到螢幕最上方消失
+            const END_PX = window.innerHeight + 100;
 
-            // ✅ 爬升速度：px per frame（更好控制）
-            // 60fps 時：0.35 大約很慢；0.6 是一般慢；1.0 會比較快
-            const SPEED_PX = 0.35;
+            function step() {
+                bottomPx += SPEED_PX;
+                container.style.bottom = bottomPx + "px";
 
-            // ✅ 文字爬到這個高度後結束（大概跑完畫面）
-            const END_PX = window.innerHeight + 600;
-
-            setTimeout(() => {
-                container.classList.remove('intro', 'show');
-
-                function step() {
-                    bottomPx += SPEED_PX;
-                    container.style.bottom = bottomPx + "px";
-
-                    if (bottomPx < END_PX) requestAnimationFrame(step);
-                    else {
-                        document.getElementById('debug').innerHTML = "故事播放完畢<br>按任意鍵重新啟動";
-                        window.addEventListener('keydown', () => location.reload(), {
-                            once: true
-                        });
-                    }
+                // ✅ 移除透明度計算，文字始終是清楚的
+                if (bottomPx < END_PX) {
+                    requestAnimationFrame(step);
+                } else {
+                    document.getElementById('debug').innerHTML = "故事播放完畢<br>按任意鍵重新啟動";
+                    window.addEventListener('keydown', () => location.reload(), {
+                        once: true
+                    });
                 }
+            }
 
-                step();
-            }, INTRO_MS);
+            requestAnimationFrame(step);
         }
 
         // ==========================================
