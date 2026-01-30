@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Starry Core - Storm to Galaxy</title>
+
     <style>
         body,
         html {
@@ -62,7 +63,7 @@
             color: #fff;
             padding: 10px;
             font-size: 24px;
-            width: 200px;
+            width: 240px;
             text-align: center;
             margin: 20px 0;
             outline: none;
@@ -77,17 +78,18 @@
             color: #666;
             margin-top: 10px;
         }
-        /* 左側爬升文字 */
+        /* ==========================
+       左側文字：固定在畫面左側
+       由 JS 控制 bottom(px) 往上跑
+       ========================== */
         
         #text-crawler-container {
             position: absolute;
-            /* 固定在左側 */
-            left: 5%;
-            bottom: -100%;
-            /* 不要置中、不旋轉 */
-            transform: none;
-            /* 左側欄寬度 */
-            width: 38%;
+            left: 24px;
+            /* ✅ 更貼近左側 */
+            bottom: -9999px;
+            /* ✅ 初始先藏在視窗下方很遠 */
+            width: min(420px, 42vw);
             max-width: 420px;
             text-align: left;
             color: #ffeb3b;
@@ -97,16 +99,17 @@
             z-index: 15;
             pointer-events: none;
             display: none;
+            /* ✅ 不要斜，不做 3D */
+            transform: none;
         }
-        /* 文字初登場：從左下角慢慢浮上來 */
+        /* ✅ 文字先「從左下角」淡入 */
         
         #text-crawler-container.intro {
             opacity: 0;
-            transform: translate(-30px, 80px);
-            /* 從左下角偏移進來 */
+            transform: translate(-36px, 90px);
+            /* ✅ 從更左下 */
             transition: opacity 1.8s ease, transform 1.8s ease;
         }
-        /* intro 結束：回到正常位置 */
         
         #text-crawler-container.intro.show {
             opacity: 1;
@@ -197,13 +200,11 @@
         // 主星星（粒子星）
         let starParticles;
 
-        // ✅ 背景星辰（一直存在）
+        // 背景星辰（一直存在）
         let bgStarsNear, bgStarsFar;
         const BG_STAR_CONFIG = {
-            // 覆蓋範圍要「超過畫面」很多，才能飄也不空白
             spreadX: 1200,
             spreadY: 800,
-            // 分兩層：遠層慢、近層快（但都很溫柔）
             far: {
                 count: 3800,
                 zMin: -900,
@@ -230,7 +231,7 @@
         let rotX = 0,
             rotY = 0;
 
-        // ===== Storm Canvas（不含山層、不含互動）=====
+        // Storm Canvas（不含山層、不含互動）
         let stormCanvas, stormCtx, stormTex;
         let rainDrops = [];
         const NUM_RAINDROPS = 520;
@@ -255,7 +256,7 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            // ✅ 背景星辰「先建起來」：不管現在是風雨還是星星，都存在
+            // 背景星辰先建起來：不管風雨或星星都存在
             createPersistentBackgroundStars();
 
             // 初始：風雨背景（CanvasTexture）
@@ -268,7 +269,6 @@
         // 2-A) 背景星辰：永遠存在 + 連續飄動（不空白）
         // ==========================================
         function createPersistentBackgroundStars() {
-            // far layer
             bgStarsFar = makeStarField(
                 BG_STAR_CONFIG.far.count,
                 BG_STAR_CONFIG.spreadX,
@@ -280,7 +280,6 @@
             );
             scene.add(bgStarsFar);
 
-            // near layer
             bgStarsNear = makeStarField(
                 BG_STAR_CONFIG.near.count,
                 BG_STAR_CONFIG.spreadX,
@@ -307,7 +306,6 @@
                 pos[i * 3 + 1] = y;
                 pos[i * 3 + 2] = z;
 
-                // 白光略帶冷色差，避免死白
                 const w = rand(0.75, 1.0);
                 col[i * 3] = w;
                 col[i * 3 + 1] = w;
@@ -327,20 +325,17 @@
             });
 
             const pts = new THREE.Points(geo, mat);
-            pts.frustumCulled = false; // ✅ 避免視錐裁切造成某些角度瞬間消失
+            pts.frustumCulled = false;
             return pts;
         }
 
-        // ✅ 連續飄動 + 無縫回收（wrap），避免「飄走後空白」
         function updateStarFieldWrap(points, speed) {
             if (!points) return;
 
             const w = BG_STAR_CONFIG.spreadX;
             const h = BG_STAR_CONFIG.spreadY;
-
             const arr = points.geometry.attributes.position.array;
 
-            // 往右上漂一點（你也可以改方向）
             const vx = speed;
             const vy = -speed * 0.25;
 
@@ -348,11 +343,9 @@
                 arr[i] += vx;
                 arr[i + 1] += vy;
 
-                // wrap X
                 if (arr[i] > w / 2) arr[i] = -w / 2;
                 else if (arr[i] < -w / 2) arr[i] = w / 2;
 
-                // wrap Y
                 if (arr[i + 1] > h / 2) arr[i + 1] = -h / 2;
                 else if (arr[i + 1] < -h / 2) arr[i + 1] = h / 2;
             }
@@ -373,7 +366,6 @@
             stormTex.minFilter = THREE.LinearFilter;
             stormTex.magFilter = THREE.LinearFilter;
 
-            // 注意：風雨時我們讓 scene.background 用 stormTex
             scene.background = stormTex;
 
             initRainDrops();
@@ -563,9 +555,7 @@
                         yi = poly[i].y;
                     const xj = poly[j].x,
                         yj = poly[j].y;
-                    const intersect =
-                        (yi > y) !== (yj > y) &&
-                        x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi;
+                    const intersect = (yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi;
                     if (intersect) inside = !inside;
                 }
                 return inside;
@@ -663,7 +653,7 @@
         }
 
         // ==========================================
-        // 3-A) 文字爬升（左側慢速）
+        // 3-A) 文字：從左下角淡入 → 再往上慢慢爬
         // ==========================================
         async function loadStoryAndStartCrawler() {
             let storyText =
@@ -685,32 +675,37 @@
 
             content.innerText = storyText;
 
-            // ✅ 先讓它在左下角「準備淡入」
+            // ✅ 先顯示，但放到視窗下方（真正左下角外面）
             container.style.display = 'block';
             container.classList.add('intro');
 
-            // 先放在更靠下的位置（用 % 保持你原本的跑法）
-            let pos = -120;
-            container.style.bottom = pos + '%';
+            // 用 px：從視窗底下開始，才會像左下角「冒出來」
+            let bottomPx = -Math.max(260, Math.floor(window.innerHeight * 0.35));
+            container.style.bottom = bottomPx + "px";
 
-            // 下一個 frame 再加 show，觸發 transition（避免瞬間就完成）
+            // 下一 frame 才加 show，觸發 transition
             requestAnimationFrame(() => {
                 container.classList.add('show');
             });
 
-            // ✅ 等淡入動畫跑完，再開始往上爬
-            const INTRO_MS = 1800; // 要跟 CSS transition 時間一致
-            const SPEED = 0.04; // 你要更慢就改 0.05 / 0.03
+            // ✅ 淡入時間（要跟 CSS transition 一致）
+            const INTRO_MS = 1800;
+
+            // ✅ 爬升速度：px per frame（更好控制）
+            // 60fps 時：0.35 大約很慢；0.6 是一般慢；1.0 會比較快
+            const SPEED_PX = 0.35;
+
+            // ✅ 文字爬到這個高度後結束（大概跑完畫面）
+            const END_PX = window.innerHeight + 600;
 
             setTimeout(() => {
-                // 淡入結束後，拿掉 intro class（避免後面被 transform 干擾）
                 container.classList.remove('intro', 'show');
 
                 function step() {
-                    pos += SPEED;
-                    container.style.bottom = pos + '%';
+                    bottomPx += SPEED_PX;
+                    container.style.bottom = bottomPx + "px";
 
-                    if (pos < 150) requestAnimationFrame(step);
+                    if (bottomPx < END_PX) requestAnimationFrame(step);
                     else {
                         document.getElementById('debug').innerHTML = "故事播放完畢<br>按任意鍵重新啟動";
                         window.addEventListener('keydown', () => location.reload(), {
@@ -722,7 +717,6 @@
                 step();
             }, INTRO_MS);
         }
-
 
         // ==========================================
         // 4) 手勢
@@ -789,16 +783,14 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // ✅ 不管在哪個場景，背景星辰都一直飄 + wrap，不會飄空白
+            // 背景星辰一直飄 + wrap，不會飄空白
             updateStarFieldWrap(bgStarsFar, BG_STAR_CONFIG.far.speed);
             updateStarFieldWrap(bgStarsNear, BG_STAR_CONFIG.near.speed);
 
-            // 風雨場景：背景仍是風雨（星辰會被畫在前景，像雨夜透出微星光）
             if (currentScene === 'STORM') {
                 drawStormFrame();
             }
 
-            // 星星場景：換深藍宇宙底色（星辰仍然在）
             if (currentScene === 'STAR' && starParticles) {
                 currentScale += (targetScale - currentScale) * 0.1;
                 rotX += (targetRotX - rotX) * 0.1;
@@ -809,16 +801,13 @@
                 starParticles.rotation.y = rotY;
                 starParticles.rotation.z += 0.005;
 
-                // 讓宇宙底色固定（不會蓋掉星辰，因為星辰是物件，不是背景）
                 scene.background = new THREE.Color(0x000006);
             }
 
             renderer.render(scene, camera);
         }
 
-        // ==========================================
         // utils
-        // ==========================================
         function lerp(a, b, t) {
             return a + (b - a) * t;
         }
@@ -831,9 +820,7 @@
             return a + Math.random() * (b - a);
         }
 
-        // ==========================================
         // resize
-        // ==========================================
         window.addEventListener("resize", () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
