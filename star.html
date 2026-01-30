@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Starry Core - Storm to Galaxy</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: "Hiragino Kaku Gothic Pro", "MS Gothic", sans-serif;
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            transition: opacity 1.5s ease;
+            pointer-events: none;
+        }
+        
+        #start-scene-ui {
+            background: transparent;
+            pointer-events: auto;
+        }
+        
+        .input-box {
+            background: rgba(10, 20, 50, 0.7);
+            border: 2px solid #0055ff;
+            box-shadow: 0 0 20px rgba(0, 85, 255, 0.5);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            color: white;
+            transition: all 0.5s;
+            pointer-events: auto;
+        }
+        
+        .input-box h2 {
+            margin-top: 0;
+            letter-spacing: 5px;
+            font-size: 1.2rem;
+            color: #88ccff;
+        }
+        
+        #password-input {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #0055ff;
+            color: #fff;
+            padding: 10px;
+            font-size: 24px;
+            width: 200px;
+            text-align: center;
+            margin: 20px 0;
+            outline: none;
+        }
+        
+        #password-input:focus {
+            box-shadow: 0 0 10px #0055ff;
+        }
+        
+        .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        /* 左側爬升文字 */
+        
+        #text-crawler-container {
+            position: absolute;
+            /* 固定在左側 */
+            left: 5%;
+            bottom: -100%;
+            /* 不要置中、不旋轉 */
+            transform: none;
+            /* 左側欄寬度 */
+            width: 38%;
+            max-width: 420px;
+            text-align: left;
+            color: #ffeb3b;
+            font-size: 26px;
+            font-weight: bold;
+            line-height: 1.6;
+            z-index: 15;
+            pointer-events: none;
+            display: none;
+        }
+        
+        #text-crawler-content {
+            white-space: pre-wrap;
+            text-shadow: 0 0 10px rgba(255, 235, 59, 0.8);
+        }
+        
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 30;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 14px;
+            border-radius: 10px;
+            color: #fff;
+            border: 1px solid #444;
+            width: 220px;
+            display: none;
+        }
+        
+        #input-video {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 220px;
+            transform: scaleX(-1);
+            z-index: 30;
+            border-radius: 10px;
+            border: 1px solid #333;
+            display: none;
+            background: #111;
+        }
+        
+        #flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            z-index: 100;
+            pointer-events: none;
+        }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div id="flash"></div>
+
+    <div id="start-scene-ui" class="overlay">
+        <div class="input-box" id="login-card">
+            <h2>啟動密碼驗證</h2>
+            <input type="text" id="password-input" placeholder="入力..." autocomplete="off">
+            <div id="error-msg" style="color:#ff4444; font-size:14px; height:20px;"></div>
+            <div class="hint">Hint: カード</div>
+        </div>
+    </div>
+
+    <div id="text-crawler-container">
+        <div id="text-crawler-content"></div>
+    </div>
+
+    <div id="ui-container">
+        <h3 style="margin:0; font-size:14px; color:#ffd700;">⭐ 星際核心控制</h3>
+        <div id="debug" style="font-size:12px; margin-top:5px;">手勢初始化中...</div>
+    </div>
+    <video id="input-video" playsinline></video>
+
+    <script>
+        // ==========================================
+        // 1) 全局變數與狀態
+        // ==========================================
+        let currentScene = 'STORM'; // STORM, TRANSITION, STAR
+        const PASSWORD = "ずっと守るって";
+
+        let scene, camera, renderer;
+
+        // 主星星（粒子星）
+        let starParticles;
+
+        // ✅ 背景星辰（一直存在）
+        let bgStarsNear, bgStarsFar;
+        const BG_STAR_CONFIG = {
+            // 覆蓋範圍要「超過畫面」很多，才能飄也不空白
+            spreadX: 1200,
+            spreadY: 800,
+            // 分兩層：遠層慢、近層快（但都很溫柔）
+            far: {
+                count: 3800,
+                zMin: -900,
+                zMax: -300,
+                size: 0.55,
+                opacity: 0.28,
+                speed: 0.22
+            },
+            near: {
+                count: 2200,
+                zMin: -320,
+                zMax: -120,
+                size: 0.75,
+                opacity: 0.42,
+                speed: 0.45
+            },
+        };
+
+        // 手勢控制狀態
+        let targetScale = 1,
+            currentScale = 0;
+        let targetRotX = 0,
+            targetRotY = 0;
+        let rotX = 0,
+            rotY = 0;
+
+        // ===== Storm Canvas（不含山層、不含互動）=====
+        let stormCanvas, stormCtx, stormTex;
+        let rainDrops = [];
+        const NUM_RAINDROPS = 520;
+        let windSeeds = [];
+        let stormSeed = Math.random() * 9999;
+
+        let lightning = 0;
+        let nextLightningAt = 0;
+
+        // ==========================================
+        // 2) 初始化 Three.js
+        // ==========================================
+        function initThree() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 50;
+
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // ✅ 背景星辰「先建起來」：不管現在是風雨還是星星，都存在
+            createPersistentBackgroundStars();
+
+            // 初始：風雨背景（CanvasTexture）
+            initStormBackground();
+
+            animate();
+        }
+
+        // ==========================================
+        // 2-A) 背景星辰：永遠存在 + 連續飄動（不空白）
+        // ==========================================
+        function createPersistentBackgroundStars() {
+            // far layer
+            bgStarsFar = makeStarField(
+                BG_STAR_CONFIG.far.count,
+                BG_STAR_CONFIG.spreadX,
+                BG_STAR_CONFIG.spreadY,
+                BG_STAR_CONFIG.far.zMin,
+                BG_STAR_CONFIG.far.zMax,
+                BG_STAR_CONFIG.far.size,
+                BG_STAR_CONFIG.far.opacity
+            );
+            scene.add(bgStarsFar);
+
+            // near layer
+            bgStarsNear = makeStarField(
+                BG_STAR_CONFIG.near.count,
+                BG_STAR_CONFIG.spreadX,
+                BG_STAR_CONFIG.spreadY,
+                BG_STAR_CONFIG.near.zMin,
+                BG_STAR_CONFIG.near.zMax,
+                BG_STAR_CONFIG.near.size,
+                BG_STAR_CONFIG.near.opacity
+            );
+            scene.add(bgStarsNear);
+        }
+
+        function makeStarField(count, spreadX, spreadY, zMin, zMax, size, opacity) {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            const col = new Float32Array(count * 3);
+
+            for (let i = 0; i < count; i++) {
+                const x = (Math.random() - 0.5) * spreadX;
+                const y = (Math.random() - 0.5) * spreadY;
+                const z = -rand(Math.abs(zMax), Math.abs(zMin)); // 保持負值區間
+
+                pos[i * 3] = x;
+                pos[i * 3 + 1] = y;
+                pos[i * 3 + 2] = z;
+
+                // 白光略帶冷色差，避免死白
+                const w = rand(0.75, 1.0);
+                col[i * 3] = w;
+                col[i * 3 + 1] = w;
+                col[i * 3 + 2] = lerp(w, 1.0, 0.12);
+            }
+
+            geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+
+            const mat = new THREE.PointsMaterial({
+                size,
+                vertexColors: true,
+                transparent: true,
+                opacity,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            const pts = new THREE.Points(geo, mat);
+            pts.frustumCulled = false; // ✅ 避免視錐裁切造成某些角度瞬間消失
+            return pts;
+        }
+
+        // ✅ 連續飄動 + 無縫回收（wrap），避免「飄走後空白」
+        function updateStarFieldWrap(points, speed) {
+            if (!points) return;
+
+            const w = BG_STAR_CONFIG.spreadX;
+            const h = BG_STAR_CONFIG.spreadY;
+
+            const arr = points.geometry.attributes.position.array;
+
+            // 往右上漂一點（你也可以改方向）
+            const vx = speed;
+            const vy = -speed * 0.25;
+
+            for (let i = 0; i < arr.length; i += 3) {
+                arr[i] += vx;
+                arr[i + 1] += vy;
+
+                // wrap X
+                if (arr[i] > w / 2) arr[i] = -w / 2;
+                else if (arr[i] < -w / 2) arr[i] = w / 2;
+
+                // wrap Y
+                if (arr[i + 1] > h / 2) arr[i + 1] = -h / 2;
+                else if (arr[i + 1] < -h / 2) arr[i + 1] = h / 2;
+            }
+
+            points.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // ==========================================
+        // 2-B) Storm 背景（CanvasTexture）
+        // ==========================================
+        function initStormBackground() {
+            stormCanvas = document.createElement("canvas");
+            stormCanvas.width = window.innerWidth;
+            stormCanvas.height = window.innerHeight;
+            stormCtx = stormCanvas.getContext("2d");
+
+            stormTex = new THREE.CanvasTexture(stormCanvas);
+            stormTex.minFilter = THREE.LinearFilter;
+            stormTex.magFilter = THREE.LinearFilter;
+
+            // 注意：風雨時我們讓 scene.background 用 stormTex
+            scene.background = stormTex;
+
+            initRainDrops();
+            initWindSeeds();
+            nextLightningAt = performance.now() + rand(600, 2200);
+        }
+
+        function initRainDrops() {
+            rainDrops = [];
+            for (let i = 0; i < NUM_RAINDROPS; i++) {
+                rainDrops.push({
+                    x: Math.random() * stormCanvas.width,
+                    y: Math.random() * stormCanvas.height,
+                    len: rand(14, 28),
+                    speed: rand(8, 16),
+                    thick: rand(0.9, 1.6)
+                });
+            }
+        }
+
+        function initWindSeeds() {
+            windSeeds = [];
+            for (let i = 0; i < 70; i++) windSeeds.push(Math.random() * 9999);
+        }
+
+        function smoothNoise1D(x, seed) {
+            return (
+                0.55 +
+                0.25 * Math.sin(x * 0.012 + seed) +
+                0.15 * Math.sin(x * 0.031 + seed * 1.7) +
+                0.05 * Math.sin(x * 0.072 + seed * 2.3)
+            );
+        }
+
+        function getStormLevel() {
+            const t = performance.now() * 0.001;
+            const breath = 0.5 + 0.5 * Math.sin(t * 0.35);
+            const micro = 0.5 + 0.5 * Math.sin(t * 1.3 + 1.7);
+            return clamp(0.62 + 0.25 * breath + 0.08 * micro, 0, 1);
+        }
+
+        function updateLightning(level) {
+            const now = performance.now();
+            if (now >= nextLightningAt) {
+                lightning = lerp(0.45, 0.95, level);
+                nextLightningAt = now + rand(900, 3200) * (1.1 - level);
+            }
+            lightning *= 0.88;
+            if (lightning < 0.01) lightning = 0;
+        }
+
+        function drawStormFrame() {
+            const ctx = stormCtx;
+            const w = stormCanvas.width;
+            const h = stormCanvas.height;
+            const time = performance.now() * 0.001;
+
+            const stormLevel = getStormLevel();
+            updateLightning(stormLevel);
+
+            drawSkyGradient(ctx, w, h, stormLevel);
+            drawRain(ctx, w, h, stormLevel);
+            drawWindLines(ctx, w, h, stormLevel, time);
+
+            ctx.fillStyle = `rgba(5, 8, 18, ${lerp(0.10, 0.22, stormLevel)})`;
+            ctx.fillRect(0, 0, w, h);
+
+            if (lightning > 0) {
+                ctx.fillStyle = `rgba(220, 235, 255, ${lightning * 0.22})`;
+                ctx.fillRect(0, 0, w, h);
+
+                ctx.save();
+                ctx.globalAlpha = lightning * 0.18;
+                ctx.fillStyle = `rgba(150, 200, 255, 1)`;
+                ctx.beginPath();
+                ctx.ellipse(w * 0.75, h * 0.22, w * 0.22, h * 0.14, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            stormTex.needsUpdate = true;
+        }
+
+        function drawSkyGradient(ctx, w, h, level) {
+            const top = [2, 6, 16];
+            const mid = [7, 16, 40];
+            const bot = [10, 22, 52];
+
+            const g = ctx.createLinearGradient(0, 0, 0, h);
+            g.addColorStop(0, `rgb(${top[0]},${top[1]},${top[2]})`);
+            g.addColorStop(0.55, `rgb(${mid[0]},${mid[1]},${mid[2]})`);
+            g.addColorStop(1, `rgb(${bot[0]},${bot[1]},${bot[2]})`);
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.save();
+            ctx.globalAlpha = lerp(0.08, 0.14, level);
+            ctx.fillStyle = "rgba(40, 60, 100, 1)";
+            for (let i = 0; i < 6; i++) {
+                const cx = w * (0.15 + 0.15 * i) + Math.sin((performance.now() * 0.0003) + i) * 30;
+                const cy = h * (0.18 + 0.03 * i);
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, w * 0.22, h * 0.08, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawRain(ctx, w, h, level) {
+            const active = Math.floor(lerp(NUM_RAINDROPS * 0.35, NUM_RAINDROPS, level));
+            const wind = lerp(2.0, 9.0, level);
+
+            const alpha = lerp(0.12, 0.58, level);
+            ctx.strokeStyle = `rgba(150, 200, 255, ${alpha})`;
+
+            for (let i = 0; i < active; i++) {
+                const d = rainDrops[i];
+
+                d.x += wind;
+                d.y += d.speed * (0.75 + level);
+
+                if (d.y > h + 60 || d.x > w + 90) {
+                    d.x = Math.random() * w - 80;
+                    d.y = -Math.random() * h * 0.35;
+                    d.len = rand(14, 30);
+                    d.speed = rand(8, 16);
+                    d.thick = rand(0.9, 1.6);
+                }
+
+                ctx.lineWidth = d.thick;
+                ctx.beginPath();
+                ctx.moveTo(d.x, d.y);
+                ctx.lineTo(d.x - 10, d.y - d.len);
+                ctx.stroke();
+            }
+        }
+
+        function drawWindLines(ctx, w, h, level, time) {
+            if (level < 0.15) return;
+
+            const lineCount = Math.floor(lerp(10, 34, level));
+            ctx.lineWidth = 1.6;
+            ctx.strokeStyle = `rgba(170, 210, 255, ${lerp(0.06, 0.18, level)})`;
+
+            for (let i = 0; i < lineCount; i++) {
+                const y = rand(h * 0.12, h * 0.82);
+                const xStart = -90;
+                const xEnd = w + 90;
+
+                ctx.beginPath();
+                for (let x = xStart; x <= xEnd; x += 18) {
+                    const n = smoothNoise1D(x + time * 140, windSeeds[i % windSeeds.length] + y * 0.01 + stormSeed);
+                    const offset = (n - 0.5) * 70 * level;
+                    if (x === xStart) ctx.moveTo(x, y + offset);
+                    else ctx.lineTo(x, y + offset);
+                }
+                ctx.stroke();
+            }
+        }
+
+        // ==========================================
+        // 2-C) 星星系統（粒子星）
+        // ==========================================
+        function createStarSystem() {
+            const particleCount = 9000;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+
+            const buildStarPolygon = (R, r, rotation = -Math.PI / 2) => {
+                const pts = [];
+                for (let i = 0; i < 10; i++) {
+                    const rad = i % 2 === 0 ? R : r;
+                    const ang = rotation + (i * Math.PI) / 5;
+                    pts.push({
+                        x: Math.cos(ang) * rad,
+                        y: Math.sin(ang) * rad
+                    });
+                }
+                return pts;
+            };
+
+            const pointInPolygon = (x, y, poly) => {
+                let inside = false;
+                for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                    const xi = poly[i].x,
+                        yi = poly[i].y;
+                    const xj = poly[j].x,
+                        yj = poly[j].y;
+                    const intersect =
+                        (yi > y) !== (yj > y) &&
+                        x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi;
+                    if (intersect) inside = !inside;
+                }
+                return inside;
+            };
+
+            const outerR = 20;
+            const innerR = 8.8;
+            const starPoly = buildStarPolygon(outerR, innerR);
+
+            let i = 0;
+            let guard = 0;
+            while (i < particleCount) {
+                if (++guard > particleCount * 200) break;
+
+                const x = (Math.random() - 0.5) * outerR * 2;
+                const y = (Math.random() - 0.5) * outerR * 2;
+                if (!pointInPolygon(x, y, starPoly)) continue;
+
+                const r = Math.hypot(x, y);
+                const distPercent = Math.max(0, 1 - r / outerR);
+                const z = (Math.random() - 0.5) * 6 * (0.25 + 0.75 * distPercent);
+
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                colors[i * 3] = 1.0;
+                colors[i * 3 + 1] = 0.8 + Math.random() * 0.2;
+                colors[i * 3 + 2] = Math.random() * 0.2;
+
+                i++;
+            }
+
+            geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.25,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.85,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            starParticles = new THREE.Points(geometry, material);
+            starParticles.visible = false;
+            scene.add(starParticles);
+        }
+
+        // ==========================================
+        // 3) 密碼與轉場
+        // ==========================================
+        const pwdInput = document.getElementById('password-input');
+        const errorMsg = document.getElementById('error-msg');
+
+        pwdInput.addEventListener('input', (e) => {
+            const v = e.target.value;
+            if (v === PASSWORD) {
+                errorMsg.textContent = "";
+                startTransition();
+            } else {
+                if (v.length >= PASSWORD.length) errorMsg.textContent = "密碼不正確";
+                else errorMsg.textContent = "";
+            }
+        });
+
+        function startTransition() {
+            if (currentScene !== 'STORM') return;
+
+            currentScene = 'TRANSITION';
+            pwdInput.disabled = true;
+
+            const startUI = document.getElementById('start-scene-ui');
+            startUI.style.opacity = '0';
+
+            const flash = document.getElementById('flash');
+            flash.style.transition = 'opacity 0.8s';
+            flash.style.opacity = '1';
+
+            setTimeout(() => {
+                createStarSystem();
+                starParticles.visible = true;
+                currentScene = 'STAR';
+
+                flash.style.opacity = '0';
+                startUI.style.display = 'none';
+
+                document.getElementById('ui-container').style.display = 'block';
+                document.getElementById('input-video').style.display = 'block';
+
+                loadStoryAndStartCrawler();
+                initHandTracking();
+            }, 1000);
+        }
+
+        // ==========================================
+        // 3-A) 文字爬升（左側慢速）
+        // ==========================================
+        async function loadStoryAndStartCrawler() {
+            let storyText =
+                "正在載入星際紀錄...\n\n" +
+                "很久以前，在一個遙遠的網頁瀏覽器中...\n\n" +
+                "這是一顆由粒子構成的星星。\n" +
+                "它代表著數位宇宙的核心。\n\n" +
+                "透過你的雙手，\n" +
+                "你可以控制引力的流向。\n\n" +
+                "故事還在繼續...";
+
+            try {
+                const response = await fetch('story.txt');
+                if (response.ok) storyText = await response.text();
+            } catch (e) {}
+
+            const container = document.getElementById('text-crawler-container');
+            const content = document.getElementById('text-crawler-content');
+            content.innerText = storyText;
+            container.style.display = 'block';
+
+            let pos = -110;
+            const SPEED = 0.04;
+
+            function step() {
+                pos += SPEED;
+                container.style.bottom = pos + '%';
+
+                if (pos < 150) requestAnimationFrame(step);
+                else {
+                    document.getElementById('debug').innerHTML = "故事播放完畢<br>按任意鍵重新啟動";
+                    window.addEventListener('keydown', () => location.reload(), {
+                        once: true
+                    });
+                }
+            }
+            step();
+        }
+
+        // ==========================================
+        // 4) 手勢
+        // ==========================================
+        function initHandTracking() {
+            const videoEl = document.getElementById('input-video');
+            const debugEl = document.getElementById('debug');
+
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults((results) => onHandResults(results, debugEl));
+
+            const cameraUtils = new Camera(videoEl, {
+                onFrame: async() => {
+                    await hands.send({
+                        image: videoEl
+                    });
+                },
+                width: 640,
+                height: 480
+            });
+
+            cameraUtils.start();
+        }
+
+        function onHandResults(results, debugEl) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+
+                const thumb = hand[4],
+                    index = hand[8];
+                const pinchDist = Math.hypot(index.x - thumb.x, index.y - thumb.y);
+                targetScale = 0.5 + clamp((pinchDist - 0.02) / 0.18, 0, 1) * 2.5;
+
+                const indexMCP = hand[5],
+                    pinkyMCP = hand[17];
+                targetRotY = Math.atan2(pinkyMCP.y - indexMCP.y, pinkyMCP.x - indexMCP.x) * 1.5;
+
+                const wrist = hand[0],
+                    midMCP = hand[9];
+                targetRotX = (Math.atan2(midMCP.y - wrist.y, midMCP.x - wrist.x) - Math.PI / 2) * 1.2;
+
+                debugEl.innerText = `手勢已追蹤\n捏合縮放 / 轉動旋轉`;
+            } else {
+                targetScale = 1;
+                targetRotX = 0;
+                targetRotY = 0;
+                debugEl.innerText = `等待手勢...`;
+            }
+        }
+
+        // ==========================================
+        // 5) 動畫循環
+        // ==========================================
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // ✅ 不管在哪個場景，背景星辰都一直飄 + wrap，不會飄空白
+            updateStarFieldWrap(bgStarsFar, BG_STAR_CONFIG.far.speed);
+            updateStarFieldWrap(bgStarsNear, BG_STAR_CONFIG.near.speed);
+
+            // 風雨場景：背景仍是風雨（星辰會被畫在前景，像雨夜透出微星光）
+            if (currentScene === 'STORM') {
+                drawStormFrame();
+            }
+
+            // 星星場景：換深藍宇宙底色（星辰仍然在）
+            if (currentScene === 'STAR' && starParticles) {
+                currentScale += (targetScale - currentScale) * 0.1;
+                rotX += (targetRotX - rotX) * 0.1;
+                rotY += (targetRotY - rotY) * 0.1;
+
+                starParticles.scale.set(currentScale, currentScale, currentScale);
+                starParticles.rotation.x = rotX;
+                starParticles.rotation.y = rotY;
+                starParticles.rotation.z += 0.005;
+
+                // 讓宇宙底色固定（不會蓋掉星辰，因為星辰是物件，不是背景）
+                scene.background = new THREE.Color(0x000006);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // ==========================================
+        // utils
+        // ==========================================
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+
+        function clamp(v, a, b) {
+            return Math.max(a, Math.min(b, v));
+        }
+
+        function rand(a, b) {
+            return a + Math.random() * (b - a);
+        }
+
+        // ==========================================
+        // resize
+        // ==========================================
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            if (stormCanvas) {
+                stormCanvas.width = window.innerWidth;
+                stormCanvas.height = window.innerHeight;
+                initRainDrops();
+            }
+        });
+
+        initThree();
+    </script>
+</body>
+
+</html>
