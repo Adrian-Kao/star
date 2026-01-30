@@ -98,6 +98,20 @@
             pointer-events: none;
             display: none;
         }
+        /* 文字初登場：從左下角慢慢浮上來 */
+        
+        #text-crawler-container.intro {
+            opacity: 0;
+            transform: translate(-30px, 80px);
+            /* 從左下角偏移進來 */
+            transition: opacity 1.8s ease, transform 1.8s ease;
+        }
+        /* intro 結束：回到正常位置 */
+        
+        #text-crawler-container.intro.show {
+            opacity: 1;
+            transform: translate(0, 0);
+        }
         
         #text-crawler-content {
             white-space: pre-wrap;
@@ -668,26 +682,47 @@
 
             const container = document.getElementById('text-crawler-container');
             const content = document.getElementById('text-crawler-content');
+
             content.innerText = storyText;
+
+            // ✅ 先讓它在左下角「準備淡入」
             container.style.display = 'block';
+            container.classList.add('intro');
 
-            let pos = -110;
-            const SPEED = 0.04;
+            // 先放在更靠下的位置（用 % 保持你原本的跑法）
+            let pos = -120;
+            container.style.bottom = pos + '%';
 
-            function step() {
-                pos += SPEED;
-                container.style.bottom = pos + '%';
+            // 下一個 frame 再加 show，觸發 transition（避免瞬間就完成）
+            requestAnimationFrame(() => {
+                container.classList.add('show');
+            });
 
-                if (pos < 150) requestAnimationFrame(step);
-                else {
-                    document.getElementById('debug').innerHTML = "故事播放完畢<br>按任意鍵重新啟動";
-                    window.addEventListener('keydown', () => location.reload(), {
-                        once: true
-                    });
+            // ✅ 等淡入動畫跑完，再開始往上爬
+            const INTRO_MS = 1800; // 要跟 CSS transition 時間一致
+            const SPEED = 0.08; // 你要更慢就改 0.05 / 0.03
+
+            setTimeout(() => {
+                // 淡入結束後，拿掉 intro class（避免後面被 transform 干擾）
+                container.classList.remove('intro', 'show');
+
+                function step() {
+                    pos += SPEED;
+                    container.style.bottom = pos + '%';
+
+                    if (pos < 150) requestAnimationFrame(step);
+                    else {
+                        document.getElementById('debug').innerHTML = "故事播放完畢<br>按任意鍵重新啟動";
+                        window.addEventListener('keydown', () => location.reload(), {
+                            once: true
+                        });
+                    }
                 }
-            }
-            step();
+
+                step();
+            }, INTRO_MS);
         }
+
 
         // ==========================================
         // 4) 手勢
